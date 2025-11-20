@@ -1,13 +1,15 @@
 <!doctype html><html><head><meta charset="utf-8"/><title>설문조사</title><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="./styles/style.css"/><link rel="icon" type="image/x-icon" href="./images/PageIcon.ico"></head><body class="invite"><div class="guestbook-display" id="guestbook-container"></div><div class="input-form-container"><div class="input-header-inner"><h4 style="color: white;">응원 메시지 남기기 (설문조사)</h4><button type="button" id="guest-submit">보내기</button></div><div class="input-group"><select id="guest-major"><option value="" disabled="disabled" selected="selected">전공을 선택해주세요...</option><option value="Communication">커뮤니케이션디자인전공</option><option value="Fashion">패션디자인전공</option><option value="Textile">텍스타일디자인전공</option><option value="Space">스페이스디자인전공</option><option value="Ceramic">세라믹디자인전공</option><option value="Industrial">인더스트리얼디자인전공</option><option value="ARVR">AR·VR미디어디자인전공</option></select></div><div class="input-group"><input id="guest-name" placeholder="이름을 남겨주세요..."/></div><div class="input-group"><textarea id="guest-content" placeholder="메시지를 남겨주세요..."></textarea></div></div><div id="alert-modal"></div><script type="module">import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-            import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
-            import {
+            import { 
                 getFirestore,
                 collection,
                 getDocs,
                 addDoc,
+                query, 
+                orderBy, 
+                limit, 
             } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
-            // Firebase 설정 (원본 코드 유지)
+            // Firebase 설정 (새로운 프로젝트 ID 유지)
             const firebaseConfig = {
                 apiKey: "AIzaSyA36JcIj6_BB52OmZPFdIO_cceDzgxYr6I",
                 authDomain: "designevent-ede34.firebaseapp.com",
@@ -18,22 +20,18 @@
             };
 
             const app = initializeApp(firebaseConfig);
-            const analytics = getAnalytics(app);
             const db = getFirestore(app);
             const guestRef = collection(db, "guests");
             const container = document.querySelector("#guestbook-container");
 
-            // 경고 메시지 표시 함수 (alert 대체)
             function showAlert(message) {
                 const modal = document.getElementById("alert-modal");
                 modal.textContent = message;
                 modal.style.display = 'block';
                 setTimeout(() => {
                     modal.style.display = 'none';
-                }, 2500); // 2.5초 후 자동으로 사라짐
+                }, 2500);
             }
-
-            // 방명록 작성 함수
             async function sendGuest() {
                 const nameInput = document.querySelector("#guest-name");
                 const contentInput = document.querySelector("#guest-content");
@@ -58,25 +56,31 @@
                     nameInput.value = "";
                     contentInput.value = "";
                     majorSelect.value = "";
-                    showAlert("메세지가 성공적으로 등록되었습니다!");
+                    showAlert("메시지가 성공적으로 등록되었습니다!");
                 } catch (error) {
                     console.error("방명록 작성 중 오류 발생: ", error);
                     showAlert("작성 중 오류가 발생했습니다. 다시 시도해주세요.");
                 }
             }
 
-            // 두 아이템이 겹치는지 확인하는 함수
-            function checkOverlap(rect1, rect2) {
-                return rect1.left < rect2.left + rect2.width &&
-                    rect1.left + rect1.width > rect2.left &&
-                    rect1.top < rect2.top + rect2.height &&
-                    rect1.top + rect1.height > rect2.top;
-            }
+            // ⭐️ 순차 팝업 표시 함수 (showSequentialGuests)로 변경
+            async function showSequentialGuests() {
+                const oldGuests = document.querySelectorAll(".guestbook-item");
+                if (oldGuests.length > 0) {
+                    oldGuests.forEach(item => item.classList.add('fade-out'));
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+                }
+                container.innerHTML = ''; 
 
-            // 무작위 위치에 방명록 표시 (겹치지 않게)
-            async function showRandomGuests() {                
                 try {
-                    const allGuests = await getDocs(guestRef);
+                    // 2. Firestore 쿼리: 최신 8개 항목 가져오기
+                    const latestGuestsQuery = query(
+                        guestRef, 
+                        orderBy("created_at", "desc"), // 최신순 정렬
+                        limit(5)
+                    );
+                    
+                    const allGuests = await getDocs(latestGuestsQuery);
                     const guestList = allGuests.docs;
                     
                     if (guestList.length === 0) {
@@ -84,108 +88,54 @@
                         return;
                     }
 
-                    const shuffledGuests = guestList.sort(() => 0.5 - Math.random());
-                    const limitedGuests = shuffledGuests.slice(0, 8); 
-
-                    const placedItems = []; 
+                    // 순차 등장(오래된 것부터)을 위해 순서 뒤집기
+                    const sequentialList = guestList.reverse();
+                    
                     let time = 0;
                     const itemSize = 250; 
 
-                    limitedGuests.forEach((doc) => {
+                    // 3. 순차적 배치 및 애니메이션 적용
+                    sequentialList.forEach((doc) => {
                         const data = doc.data();
-                        const date = new Date(data.created_at.toDate());
-                        const minutes = date.getMinutes().toString().padStart(2, '0');
-                        const myDate = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${date.getHours()}:${date.getMinutes()}`;
+                        const date = new Date(data.created_at.toDate()); 
                         
+                        const minutes = date.getMinutes().toString().padStart(2, '0');
+                        const myDate = `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()} ${date.getHours()}:${minutes}`;
+
                         const guestItem = document.createElement("div");
                         guestItem.classList.add("guestbook-item");
                         
-                        let newX, newY, isOverlapping;
-                        let attempts = 0;
-                        const maxAttempts = 50; 
+                        const newX = Math.random() * (container.clientWidth - itemSize);
+                        const newY = Math.random() * (container.clientHeight - itemSize);
 
-                        do {
-                            isOverlapping = false;
-                            newX = Math.random() * (container.clientWidth - itemSize);
-                            newY = Math.random() * (container.clientHeight - itemSize);
+                        guestItem.style.left = `${newX}px`;
+                        guestItem.style.top = `${newY}px`;
+                        
+                        // 전공 정보 포함하여 HTML 구성
+                        guestItem.innerHTML = `
+                            <div class="bodytext-xs" style="font-weight: bold; color: #ff5e91;">${data.major}</div>
+                            <a class="bodytext-xs" style="font-weight: bold;">${data.name}</a>
+                            <p class="bodytext-xs" style="font-weight: bold;">${data.content}</p>
+                            <div class="bodytext-xs2" style="font-weight: bold;">작성일: ${myDate}</div>
+                        `;
+                        
+                        container.appendChild(guestItem);
 
-                            const newRect = {
-                                left: newX,
-                                top: newY,
-                                width: itemSize,
-                                height: guestItem.offsetHeight || 150 
-                            };
-
-                            for (const placedRect of placedItems) {
-                                if (checkOverlap(newRect, placedRect)) {
-                                    isOverlapping = true;
-                                    break;
-                                }
-                            }
-                            attempts++;
-                        } while (isOverlapping && attempts < maxAttempts);
-
-                        if (!isOverlapping) {
-                            guestItem.style.left = `${newX}px`;
-                            guestItem.style.top = `${newY}px`;
-                            
-                            guestItem.innerHTML = `
-                                <div class="bodytext-xs" style="font-weight: bold; color: #ff5e91;">${data.major}</div>
-                                <a class="bodytext-xs" style="font-weight: bold;">${data.name}</a>
-                                <p class="bodytext-xs" style="font-weight: bold;">${data.content}</p>
-                                <div class="bodytext-xs2" style="font-weight: bold;">작성일: ${myDate}</div>
-                            `;
-                            
-                            container.appendChild(guestItem);
-
-                            const finalRect = {
-                                left: newX,
-                                top: newY,
-                                width: guestItem.offsetWidth,
-                                height: guestItem.offsetHeight
-                            };
-                            placedItems.push(finalRect);
-
-                            guestItem.style.animationDelay = `${time}s`;
-                            time += 0.1;
-                        }
+                        // 순차적 등장 애니메이션 지연 시간 설정
+                        guestItem.style.animationDelay = `${time}s`;
+                        time += 0.5; 
                     });
+
                 } catch (error) {
-                    console.error("방명록 불러오기 중 오류 발생: ", error);
+                    console.error("메시지 불러오기 중 오류 발생: ", error);
+                    showAlert("데이터 로딩 중 권한 오류가 발생했습니다. 관리자에게 문의하세요.");
                 }
             }
-
-            // 이벤트 리스너
             document.querySelector("#guest-submit").addEventListener("click", async () => {
                 await sendGuest();
-                showRandomGuests();
+                showSequentialGuests(); 
             });
-            
-            // 페이지 로드 시 방명록 표시
             document.addEventListener("DOMContentLoaded", () => {
-                showRandomGuests();
-                // 10초마다 방명록 갱신
-                setInterval(showRandomGuests, 12000);
-            });
-            
-        document.addEventListener('DOMContentLoaded', () => {
-            const aboutLink = document.querySelector('.dropdown .nav-link2');
-            const dropdownContent = document.querySelector('.dropdown-content');
-
-            if (aboutLink && dropdownContent) {
-                aboutLink.addEventListener('click', (event) => {
-                    event.preventDefault(); 
-                    if (dropdownContent.style.display === 'block') {
-                        dropdownContent.style.display = 'none';
-                    } else {
-                        dropdownContent.style.display = 'block';
-                    }
-                });
-
-                document.addEventListener('click', (event) => {
-                    if (!aboutLink.contains(event.target) && !dropdownContent.contains(event.target)) {
-                        dropdownContent.style.display = 'none';
-                    }
-                });
-            }
-        });</script></body></html>
+                showSequentialGuests(); 
+                setInterval(showSequentialGuests, 12000); 
+            });</script></body></html>
