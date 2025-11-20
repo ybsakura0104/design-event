@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"/><title>설문조사</title><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="./styles/style.css"/><link rel="icon" type="image/x-icon" href="./images/PageIcon.ico"></head><body class="invite"><div class="guestbook-display" id="guestbook-container"></div><div class="input-form-container"><div class="input-header-inner"><h4 style="color: white;">응원 메시지 남기기 (설문조사)</h4><button type="button" id="guest-submit">보내기</button></div><div class="input-group"><select id="guest-major"><option value="" disabled="disabled" selected="selected">전공을 선택해주세요...</option><option value="Communication">커뮤니케이션디자인전공</option><option value="Fashion">패션디자인전공</option><option value="Textile">텍스타일디자인전공</option><option value="Space">스페이스디자인전공</option><option value="Ceramic">세라믹디자인전공</option><option value="Industrial">인더스트리얼디자인전공</option><option value="ARVR">AR·VR미디어디자인전공</option></select></div><div class="input-group"><input id="guest-name" placeholder="이름을 남겨주세요..."/></div><div class="input-group"><textarea id="guest-content" placeholder="메시지를 남겨주세요..."></textarea></div></div><div id="alert-modal"></div><script type="module">import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+<!doctype html><html><head><meta charset="utf-8"/><title>설문조사</title><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="./styles/style.css"/><link rel="icon" type="image/x-icon" href="./images/PageIcon.ico"></head><body class="invite"><div class="stats-container" id="participation-stats"></div><div class="guestbook-display" id="guestbook-container"></div><div class="input-form-container"><div class="input-header-inner"><h4 style="color: white;">응원 메시지 남기기 (설문조사)</h4><button type="button" id="guest-submit">보내기</button></div><div class="input-group"><select id="guest-major"><option value="" disabled="disabled" selected="selected">전공을 선택해주세요...</option><option value="Communication">커뮤니케이션디자인전공</option><option value="Fashion">패션디자인전공</option><option value="Textile">텍스타일디자인전공</option><option value="Space">스페이스디자인전공</option><option value="Ceramic">세라믹디자인전공</option><option value="Industrial">인더스트리얼디자인전공</option><option value="ARVR">AR·VR미디어디자인전공</option></select></div><div class="input-group"><input id="guest-name" placeholder="이름을 남겨주세요..."/></div><div class="input-group"><textarea id="guest-content" placeholder="메시지를 남겨주세요..."></textarea></div></div><div id="alert-modal"></div><script type="module">import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
             import { 
                 getFirestore,
                 collection,
@@ -23,6 +23,29 @@
             const db = getFirestore(app);
             const guestRef = collection(db, "guests");
             const container = document.querySelector("#guestbook-container");
+            const statsContainer = document.querySelector("#participation-stats");
+
+            // 총 재학생 수 데이터
+            const TOTAL_STUDENTS = {
+                "커뮤니케이션디자인전공": 150,
+                "패션디자인전공": 120,
+                "텍스타일디자인전공": 100,
+                "스페이스디자인전공": 90,
+                "세라믹디자인전공": 80,
+                "인더스트리얼디자인전공": 110,
+                "AR·VR미디어디자인전공": 80,
+            };
+
+            const MAJOR_MAP = {
+                "Communication": "커뮤니케이션디자인전공",
+                "Fashion": "패션디자인전공",
+                "Textile": "텍스타일디자인전공",
+                "Space": "스페이스디자인전공",
+                "Ceramic": "세라믹디자인전공",
+                "Industrial": "인더스트리얼디자인전공",
+                "ARVR": "AR·VR미디어디자인전공",
+            };
+
 
             function showAlert(message) {
                 const modal = document.getElementById("alert-modal");
@@ -40,6 +63,7 @@
                     rect1.top < rect2.top + rect2.height + padding &&
                     rect1.top + rect1.height + padding > rect2.top;
             }
+            
             async function sendGuest() {
                 const nameInput = document.querySelector("#guest-name");
                 const contentInput = document.querySelector("#guest-content");
@@ -75,7 +99,8 @@
                 }
             }
 
-            async function showSequentialGuests() { 
+            // ⭐️ showRandomGuests 함수: 랜덤 위치, 겹침 방지, 5개 제한
+            async function showRandomGuests() { 
                 // 1. 기존 팝업 페이드 아웃 및 제거
                 const oldGuests = document.querySelectorAll(".guestbook-item");
                 if (oldGuests.length > 0) {
@@ -85,14 +110,8 @@
                 container.innerHTML = ''; 
 
                 try {
-                    // 2. Firestore 쿼리: 최신 8개 항목 가져오기
-                    const latestGuestsQuery = query(
-                        guestRef, 
-                        orderBy("created_at", "desc"), 
-                        limit(8) 
-                    );
-                    
-                    const allGuests = await getDocs(latestGuestsQuery);
+                    // 2. Firestore 쿼리: 전체 항목 가져오기 (랜덤 선택을 위해 제한 없음)
+                    const allGuests = await getDocs(guestRef);
                     const guestList = allGuests.docs;
                     
                     if (guestList.length === 0) {
@@ -100,7 +119,8 @@
                         return;
                     }
 
-                    const sequentialList = guestList.reverse();
+                    const shuffledGuests = guestList.sort(() => 0.5 - Math.random());
+                    const limitedGuests = shuffledGuests.slice(0, 5); 
                     
                     const placedItems = [];
                     let time = 0;
@@ -108,8 +128,10 @@
                     const maxAttempts = 50; 
 
                     // 3. 겹침 방지 로직을 사용하여 위치 배치
-                    sequentialList.forEach((doc) => {
+                    limitedGuests.forEach((doc) => {
                         const data = doc.data();
+                        const displayMajor = MAJOR_MAP[data.major] || data.major;
+
                         const date = new Date(data.created_at.toDate()); 
                         const minutes = date.getMinutes().toString().padStart(2, '0');
                         const myDate = `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()} ${date.getHours()}:${minutes}`;
@@ -144,8 +166,9 @@
                         if (!isOverlapping) {
                             guestItem.style.left = `${newX}px`;
                             guestItem.style.top = `${newY}px`;
+                            
                             guestItem.innerHTML = `
-                                <div class="bodytext-xs" style="font-weight: bold; color: #ff5e91;">${data.major}</div>
+                                <div class="bodytext-xs" style="font-weight: bold; color: #ff5e91;">${displayMajor}</div>
                                 <a class="bodytext-xs" style="font-weight: bold;">${data.name}</a>
                                 <p class="bodytext-xs" style="font-weight: bold;">${data.content}</p>
                                 <div class="bodytext-xs2" style="font-weight: bold;">작성일: ${myDate}</div>
@@ -162,7 +185,7 @@
                             placedItems.push(finalRect);
 
                             guestItem.style.animationDelay = `${time}s`;
-                            time += 0.5; 
+                            time += 0.1; 
                         }
                     });
 
@@ -171,11 +194,59 @@
                     showAlert("데이터 로딩 중 권한 오류가 발생했습니다. 관리자에게 문의하세요.");
                 }
             }
-            document.querySelector("#guest-submit").addEventListener("click", async () => {
-                await sendGuest();
-                showSequentialGuests(); 
-            });
+
+            async function calculateAndDisplayStats() {
+                try {
+                    const allGuests = await getDocs(guestRef);
+                    const guestList = allGuests.docs;
+                    
+                    const participationCount = {};
+                    
+                    // 1. 전공별 참여 학생 수 집계
+                    guestList.forEach(doc => {
+                        const major = doc.data().major;
+                        if (TOTAL_STUDENTS[major]) { 
+                            participationCount[major] = (participationCount[major] || 0) + 1;
+                        }
+                    });
+                    
+                    let statsHTML = '<h4>전공별 참여율 (%)</h4><div class="stats-list">';
+                    
+                    // 2. 참여율 계산 및 HTML 생성
+                    for (const major in TOTAL_STUDENTS) {
+                        const total = TOTAL_STUDENTS[major];
+                        const participated = participationCount[major] || 0;
+                        const percentage = ((participated / total) * 100).toFixed(1);
+
+                        statsHTML += `
+                            <div class="stat-item">
+                                <span class="major-name">${major} (${participated}명)</span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" style="width: ${percentage}%;"></div>
+                                </div>
+                                <span class="percentage-text">${percentage}%</span>
+                            </div>
+                        `;
+                    }
+                    
+                    statsHTML += '</div>';
+                    statsContainer.innerHTML = statsHTML;
+
+                } catch (error) {
+                    console.error("통계 계산 중 오류 발생: ", error);
+                    statsContainer.innerHTML = '<p style="color: red;">통계를 불러오는 데 실패했습니다.</p>';
+                }
+            }
+
             document.addEventListener("DOMContentLoaded", () => {
-                showSequentialGuests(); 
-                setInterval(showSequentialGuests, 12000); 
+                document.querySelector("#guest-submit").addEventListener("click", async () => {
+                    await sendGuest();
+                    showRandomGuests();
+                    calculateAndDisplayStats();
+                });
+                showRandomGuests();
+                calculateAndDisplayStats();
+                
+                setInterval(showRandomGuests, 12000);
+                setInterval(calculateAndDisplayStats, 12000);
             });</script></body></html>
